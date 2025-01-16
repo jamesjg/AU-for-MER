@@ -1,0 +1,36 @@
+{
+    // 使用 IntelliSense 了解相关属性。 
+    // 悬停以查看现有属性的描述。
+    // 欲了解更多信息，请访问: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+
+        {
+            "name": "train",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "main_HTNet.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--train", "True",
+            ],
+        },
+        {
+            "name": "main_au.py",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "main_au.py",
+            "args": [
+                "--json_path", "datasets/CASME2/inference_au.json",
+                "--xlsx_path", "datasets/CASME2/CASME2-coding-20140508.xlsx",
+                "--data_type", "casme2",
+                "--data_path", "datasets/CASME2/scrfd_cropped_selected",
+                "--batch_size", "256",
+                "--lr", "5e-5",
+                "--epoch", "10",
+                "--num_classes", "3"
+            ],
+            "console": "integratedTerminal",
+        }
+    ]
+}
