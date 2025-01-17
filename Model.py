@@ -455,9 +455,9 @@ class HTNet_AU(HTNet):
 
         left_top_feature = au_embedding[:, [0,2,4,6], :].mean(dim=1)
         right_top_feature = au_embedding[:, [1,3,5,7], :].mean(dim=1) 
-        left_bottom_feature = au_embedding[:, [11,13], :].mean(dim=1) 
-        right_bottom_feature = au_embedding[:, [12,14], :].mean(dim=1)
-        global_feature = self.au_to_top_fusion(au_embedding[:, [8,9,10,15,16,17,18,19,20,21,22,23], :]).mean(dim=1).view(B, -1, 1, 1)
+        left_bottom_feature = au_embedding[:, [11, 13, 15, 16, 19, 20, 21], :].mean(dim=1) 
+        right_bottom_feature = au_embedding[:, [12, 14, 15, 16, 19, 20, 21], :].mean(dim=1)
+        global_feature = self.au_to_top_fusion(au_embedding[:, [17,22,23], :]).mean(dim=1).view(B, -1, 1, 1)
 
         four_part_feature = torch.stack([left_top_feature, right_top_feature, left_bottom_feature, right_bottom_feature], dim=-1).view(B, -1, 2, 2)
 
