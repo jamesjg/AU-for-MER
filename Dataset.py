@@ -324,7 +324,8 @@ class CASMEDataset(Dataset):
             elif self.data_type == 'casme2':
                 frame_name =  os.path.join('sub'+str(subject).zfill(2), filename, f"img{frame_num}.jpg")
             # print(os.path.join(self.data_path, frame_name))
-            if os.path.exists(os.path.join(self.data_path, frame_name)):
+            # if os.path.exists(os.path.join(self.data_path, frame_name)):
+            if frame_name in self.au_data.keys():
                 assert frame_name in self.au_data.keys(), f"Frame {frame_name} not found in AU data."
                 au_sequence.append(self.au_data[frame_name])
                 if frame_num == apex:

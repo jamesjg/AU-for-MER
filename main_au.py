@@ -110,11 +110,12 @@ def main(args):
     t = time.time()
 
     # For CASME
-    main_path = args.data_path
+    main_path = args.optical_flow_path
     subName = os.listdir(main_path)
-    subName = [x for x in subName if os.path.isdir(os.path.join(main_path, x))]
+    subName = [x for x in subName if x.endswith('.png') or x.endswith('.jpg')]
     subjects = [x.split('_')[0] for x in subName]
     subjects = sorted(list(set(subjects)))
+    print(subjects)
 
     first_transform = transforms.Compose([
         transforms.ToPILImage(),
@@ -286,6 +287,7 @@ if __name__ == '__main__':
     parser.add_argument('--json_path', type=str, default='datasets/CASME3/ME_inference_au.json')
     parser.add_argument('--xlsx_path', type=str, default='datasets/CASME3/annotation/cas(me)3_part_A_ME_label_JpgIndex_v2_final.xlsx')
     parser.add_argument('--data_type', type=str, default='casme3')
+    parser.add_argument('--optical_flow_path', type=str, default='datasets/casme3_crop_tvl1_whole_norm_u_v_os')
     parser.add_argument('--data_path', type=str, default='datasets/CASME3/Part_A_ME_clip_scrfd_cropped')
     parser.add_argument('--weight_decay', type=float, default=1e-4)
     parser.add_argument('--batch_size', type=int, default=256)
