@@ -418,10 +418,31 @@ class HTNet_AU(HTNet):
         )
 
         
-
+        # self.local_alpha = nn.Parameter(torch.ones(1, 512, 2, 2))
+        # self.global_alpha = nn.Parameter(torch.ones(1, 1024, 1, 1))
         self.attention_pooling = BiAttentionPooling(dim)
-        self.au_to_middle_fusion = nn.Linear(dim, 512)
-        self.au_to_top_fusion = nn.Linear(512, 256)
+        self.au_to_middle_fusion = nn.Sequential(
+            nn.Linear(dim, 512),
+            # nn.GELU()
+            # nn.Tanh()
+            nn.ReLU()
+        )
+        self.au_to_top_fusion = nn.Sequential(
+            nn.Linear(512, 1024),
+            # nn.GELU()
+            # nn.Tanh()
+            nn.ReLU()
+        )
+        # self.local_fusion_conv = nn.Sequential(
+        #     nn.Conv2d(1024, 512, kernel_size=1, stride=1, padding=0, bias=False),
+        #     # nn.BatchNorm2d(512),
+        #     # nn.ReLU()
+        # )
+        # self.global_fusion_conv = nn.Sequential(
+        #     nn.Conv2d(2048, 1024, kernel_size=1, stride=1, padding=0, bias=False),
+        #     # nn.BatchNorm2d(1024),
+        #     # nn.ReLU()
+        # )
 
     def forward(self, au, img):
         x = self.to_patch_embedding(img)
@@ -492,7 +513,7 @@ class HTNet_AU(HTNet):
             block_size = 2 ** level
             if level == 1:
                 x = x + four_part_feature
-            elif level == 2:
+            elif level == 0:
                 x = x + global_feature
             x = rearrange(x, 'b c (b1 h) (b2 w) -> (b b1 b2) c h w', b1 = block_size, b2 = block_size)
             x = transformer(x)
