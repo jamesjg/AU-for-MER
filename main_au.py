@@ -12,7 +12,7 @@ import argparse
 from tqdm import tqdm
 from distutils.util import strtobool
 import torch
-from Model import AUTransformer, HTNet_AU
+from Model import HTNet_AU
 import numpy as np
 from facenet_pytorch import MTCNN
 from Dataset import CASMEDataset
@@ -109,7 +109,6 @@ def main(args):
 
     t = time.time()
 
-    # For CASME
     main_path = args.optical_flow_path
     subName = os.listdir(main_path)
     subName = [x for x in subName if x.endswith('.png') or x.endswith('.jpg')]
@@ -117,27 +116,6 @@ def main(args):
     subjects = sorted(list(set(subjects)))
     print(subjects)
 
-    first_transform = transforms.Compose([
-        transforms.ToPILImage(),
-        transforms.Resize((224, 224)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    ])
-
-    train_transform = transforms.Compose([
-        # transforms.ToPILImage(),
-        transforms.RandomHorizontalFlip(p=0.5),
-        transforms.RandomRotation(5),
-        transforms.RandomCrop(224, padding=4),
-    ])
-
-    test_transform = transforms.Compose([
-        transforms.ToPILImage(),
-        transforms.Resize(224),
-        # transforms.CenterCrop(224),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    ])
     
     for subject in tqdm(subjects):
         train_dataset = CASMEDataset(mode='train', test_subject=subject, num_classes=args.num_classes, 
@@ -146,14 +124,13 @@ def main(args):
                                      xlsx_path=args.xlsx_path,
                                      data_type=args.data_type,
                                      transform_au=args.transform_au,
-                                     first_transform=first_transform,
-                                     img_transform=train_transform)
+                                     n_frames=args.n_frames)
         test_dataset = CASMEDataset(mode='test', test_subject=subject, num_classes=args.num_classes, 
                                     json_path=args.json_path,
                                     data_path=args.data_path,
                                     xlsx_path=args.xlsx_path,
                                     data_type=args.data_type,
-                                    first_transform=test_transform)
+                                    n_frames=args.n_frames)
 
         if len(test_dataset) == 0:
             print(f'Subject: {subject} | No test data')
@@ -163,7 +140,7 @@ def main(args):
         sampler = torch.utils.data.WeightedRandomSampler(sample_weights, len(sample_weights))
         train_dataloader = DataLoader(train_dataset, batch_size=batch_size, num_workers=8, sampler=sampler)
         
-        # train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
+
         test_dataloader = DataLoader(test_dataset, batch_size=512, shuffle=False, num_workers=8)
         
         print(f'Subject: {subject} | Train Size: {len(train_dataset)} | Test Size: {len(test_dataset)}')
@@ -177,21 +154,18 @@ def main(args):
             block_repeats=(2, 2, 8),#(2, 2, 8),------
             # the number of transformer blocks at each heirarchy, starting from the bottom(2,2,20) -
             num_classes=args.num_classes,
-            dropout=args.dropout,)
+            dropout=args.dropout,
+            n_frames=args.n_frames)
         
         model = model.to(device)
         optimizer = torch.optim.AdamW(model.parameters(),lr=learning_rate, weight_decay=args.weight_decay)
         scheduler = CosineAnnealingLR(optimizer, T_max=epochs, eta_min=1e-6)
-        #weight = train_dataset.get_class_weights()
-        # loss_fn = nn.CrossEntropyLoss(label_smoothing=0.1)
-        # print(train_dataset.get_class_weights())
         loss_fn = nn.CrossEntropyLoss()
 
 
         # store best results
         best_accuracy_for_each_subject = -1
         best_each_subject_pred = []
-
         for epoch in (range(epochs)):
             # Training
             model.train()
@@ -202,10 +176,7 @@ def main(args):
             for au_sequence, emotion, img in train_dataloader:
                 au_sequence = au_sequence.to(device)
                 emotion = emotion.to(device)
-                # print(sum(emotion==0), sum(emotion==1), sum(emotion==2))
                 img = img.to(device)
-                # apex = apex.to(device)
-                # onset = onset.to(device)
                 optimizer.zero_grad()
                 pred_emotion = model(au_sequence, img)
                 loss = loss_fn(pred_emotion, emotion)
@@ -225,22 +196,16 @@ def main(args):
             test_loss = 0.0
             num_test_correct = 0
             num_test_examples = 0
-            test_pred = []
-            test_gt = []
             with torch.no_grad():
                 for au_sequence, emotion, img in test_dataloader:
                     au_sequence = au_sequence.to(device)
                     emotion = emotion.to(device)
                     img = img.to(device)
-                    # onset = onset.to(device)
-                    # apex = apex.to(device)
                     pred_emotion = model(au_sequence, img)
                     loss = loss_fn(pred_emotion, emotion)
                     test_loss += loss.data.item() * au_sequence.size(0)
                     num_test_correct += (torch.max(pred_emotion, 1)[1] == emotion).sum().item()
                     num_test_examples += emotion.shape[0]
-                    # test_pred.extend(torch.max(pred_emotion, 1)[1].tolist())
-                    # test_gt.extend(emotion.tolist())
 
             test_acc = num_test_correct / num_test_examples
             test_loss = test_loss / len(test_dataloader.dataset)
@@ -281,7 +246,6 @@ def main(args):
     print('UF1:', round(UF1, 4), '| UAR:', round(UAR, 4))
     print('Best UF1:', round(best_UF1, 4), '| Best UAR:', round(best_UAR, 4))
 
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--json_path', type=str, default='datasets/CASME3/ME_inference_au.json')
@@ -294,9 +258,10 @@ if __name__ == '__main__':
     parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--epoch', type=int, default=100)
     parser.add_argument('--num_classes', type=int, default=3)
-    parser.add_argument('--random_seed', type=int, default=42)
+    parser.add_argument('--random_seed', type=int, default=3407)
     parser.add_argument('--dropout', type=float, default=0)
     parser.add_argument('--transform_au', action='store_true')
+    parser.add_argument('--n_frames', type=int, default=8)
 
 
     args = parser.parse_args()

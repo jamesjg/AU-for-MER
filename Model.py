@@ -210,152 +210,6 @@ class BiAttentionPooling(nn.Module):
         output = torch.bmm(attn_weights, v).mean(dim=1)  # 聚合
         return output
 
-# class AUPreprocessor(nn.Module):
-#     def __init__(self, noise_std=0.01):
-#         super().__init__()
-#         self.noise_std = noise_std
-
-#     def forward(self, x):
-#         mask = (x != 0).float()
-#         x = x * mask  # 保留非零值
-#         if self.training:
-#             x += torch.randn_like(x) * self.noise_std * mask  # 仅对非零值添加噪声
-#         return x
-
-
-class AUTransformer(nn.Module):
-    def __init__(self, num_classes=7, d_model=128, num_heads=4, num_layers=4, dropout=0.1, emb_dim=128):
-        super().__init__()
-        # self.preprocessor = AUPreprocessor()
-        self.local_conv = nn.Conv1d(24, emb_dim, kernel_size=3, padding=1)
-        self.au_project = nn.Linear(emb_dim, d_model)
-        self.in_project = nn.Linear(24, d_model)
-        self.pos_embedding = nn.Parameter(torch.randn(33, d_model))
-        self.au_index_embedding = nn.Embedding(24, embedding_dim=emb_dim)
-        self.state_project = nn.Linear(24, d_model)
-
-        self.mlp = nn.Sequential(
-            nn.Linear(d_model, d_model),
-            nn.ReLU(),
-            nn.Linear(d_model, d_model)
-        )
-        self.transformer = nn.TransformerEncoder(
-            nn.TransformerEncoderLayer(d_model, num_heads, dim_feedforward=d_model, dropout=dropout, activation='gelu'),
-            num_layers
-        )
-        self.multi_scale_pooling = nn.Sequential(
-            nn.Conv1d(d_model, d_model, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.Conv1d(d_model, d_model, kernel_size=5, padding=2),
-            nn.ReLU()
-        )
-        self.attention_pooling = BiAttentionPooling(d_model)
-        self.classifier = nn.Sequential(
-            nn.Linear(d_model, d_model),
-            nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(d_model, num_classes)
-        )
-
-    def forward(self, x):
-        B, T, _ = x.shape
-        au_active = (x > 0).float() # [B, T, 24]
-        au_active_embedding = self.state_project(au_active)  # [B, T, d_model]
-
-    
-        x = self.in_project(x)
-
-        x = x + au_active_embedding
-        pos = self.pos_embedding[:T].unsqueeze(0)
-        x = x + pos # [B, T, d_model]
-        
-        x = self.transformer(x.transpose(0, 1)).transpose(0, 1)
-        x = self.multi_scale_pooling(x.transpose(1, 2)).transpose(1, 2)
-        x = self.attention_pooling(x)
-        
-        
-        output = self.classifier(x)
-        return output
-
-
-
-# class AUTransformer_v2(nn.Module):
-#     def __init__(self, num_classes=7, d_model=128, num_heads=4, num_layers=4, dropout=0.1, emb_dim=32):
-#         super().__init__()
-
-#         # AU 空间特征建模 (每一帧内的 AU 交互)
-#         self.au_index_embedding = nn.Embedding(24, embedding_dim=emb_dim)   
-#         self.frame_spatial_transformer = nn.TransformerEncoder(
-#             nn.TransformerEncoderLayer(d_model=d_model, nhead=num_heads, dim_feedforward=128, dropout=dropout),
-#             num_layers=num_layers // 2
-#         )
-#         self.au_index_projector = nn.Linear(emb_dim, d_model)  # 空间特征投影到 d_model
-#         self.input_projector = nn.Linear(24, d_model)  # 输入 AU 特征投影到 d_model
-
-#         # 时间特征建模 (帧间 AU 变化)
-#         self.temporal_transformer = nn.TransformerEncoder(
-#             nn.TransformerEncoderLayer(d_model=d_model, nhead=num_heads, dim_feedforward=128, dropout=dropout),
-#             num_layers=num_layers // 2
-#         )
-
-#         # 时空交互融合
-#         self.spatial_temporal_fusion = nn.MultiheadAttention(embed_dim=d_model, num_heads=num_heads, dropout=dropout)
-
-#         # 多尺度池化
-#         self.multi_scale_pooling = nn.Sequential(
-#             nn.Conv1d(d_model, d_model, kernel_size=3, padding=1),
-#             nn.ReLU(),
-#             nn.Conv1d(d_model, d_model, kernel_size=5, padding=2),
-#             nn.ReLU()
-#         )
-
-#         # 注意力池化
-#         self.attention_pooling = nn.Sequential(
-#             nn.Linear(d_model, d_model),
-#             nn.Tanh(),
-#             nn.Linear(d_model, 1)
-#         )
-
-#         # 分类器
-#         self.classifier = nn.Sequential(
-#             nn.Linear(d_model, d_model),
-#             nn.ReLU(),
-#             nn.Dropout(0.3),
-#             nn.Linear(d_model, num_classes)
-#         )
-
-#     def forward(self, x):
-
-#         B, T, AU = x.shape  # Batch, 时间帧数, AU数量
-#         au_indices = torch.arange(AU, device=x.device).unsqueeze(0).unsqueeze(0)  # [1, 1, 24]
-#         au_indices = au_indices.expand(B, T, -1)  # [B, T, 24]
-#         au_embeddings = self.au_index_embedding(au_indices)  # [B, T, 24, emb_dim]
-
-        
-#         x_expanded = x.unsqueeze(-1)  # [B, T, 24, 1]
-#         au_feature = x_expanded * au_embeddings  # 逐元素乘法 [B, T, 24, emb_dim]
-#         au_feature = self.au_index_projector(au_feature)  # [B, T, 24, d_model]
-
-#         x_spatial = au_feature.view(B * T, AU, -1)  # 合并 Batch 和时间维度 [B*T, 24, emb_dim]
-#         x_spatial = self.frame_spatial_transformer(x_spatial)  # [B*T, 24, emb_dim] 
-
-#         x_spatial = x_spatial.mean(dim=1)  # [B*T, emb_dim]
-#         x_spatial = x_spatial.view(B, T, -1)  # [B, T, d_model]
-
-#         x_temporal = x.transpose(1, 2).contiguous()  # [B, 24, T]
-#         x_temporal = x_temporal.view(B * AU, T, 1)  # [B*24, T, 1]
-
-#         x_temporal = self.temporal_transformer(x_temporal)  # [B*24, T, d_model]
-#         x_temporal = x_temporal.mean(dim=1)  # [B*24, d_model]
-#         x_temporal = x_temporal.view(B, AU, -1)  # [B, 24, d_model]
-
-#         # print(x_spatial.shape, x_temporal.shape)   
-#         x_spatial = x_spatial.mean(dim=1, keepdim=True).expand(-1, AU, -1)  # [B, 24, d_model]
-#         x_fusion = x_spatial + x_temporal  # [B, 24, d_model]
-#         x_fusion = x_fusion.mean(dim=1)  # [B, d_model]
-#         output = self.classifier(x_fusion)  # [B, num_classes]
-
-#         return output
 
 
 class HTNet_AU(HTNet):
@@ -374,7 +228,8 @@ class HTNet_AU(HTNet):
         dim_head = 64,
         dropout = 0.,
         emb_dim = 128,
-        N_AU = 24
+        N_AU = 24,
+        n_frames = 32
     ):
         super().__init__(
             image_size=image_size,
@@ -392,7 +247,7 @@ class HTNet_AU(HTNet):
 
         self.au_project = nn.Linear(emb_dim, dim)
         self.in_project = nn.Linear(N_AU, dim)
-        self.pos_embedding = nn.Parameter(torch.randn(33, dim))
+        self.pos_embedding = nn.Parameter(torch.randn(n_frames+1, dim))
         self.au_index_embedding = nn.Embedding(N_AU, embedding_dim=emb_dim)
         self.state_project = nn.Linear(N_AU, dim)
 
@@ -418,31 +273,10 @@ class HTNet_AU(HTNet):
         )
 
         
-        # self.local_alpha = nn.Parameter(torch.ones(1, 512, 2, 2))
-        # self.global_alpha = nn.Parameter(torch.ones(1, 1024, 1, 1))
         self.attention_pooling = BiAttentionPooling(dim)
-        self.au_to_middle_fusion = nn.Sequential(
-            nn.Linear(dim, 512),
-            # nn.GELU()
-            # nn.Tanh()
-            nn.ReLU()
-        )
-        self.au_to_top_fusion = nn.Sequential(
-            nn.Linear(512, 1024),
-            # nn.GELU()
-            # nn.Tanh()
-            nn.ReLU()
-        )
-        # self.local_fusion_conv = nn.Sequential(
-        #     nn.Conv2d(1024, 512, kernel_size=1, stride=1, padding=0, bias=False),
-        #     # nn.BatchNorm2d(512),
-        #     # nn.ReLU()
-        # )
-        # self.global_fusion_conv = nn.Sequential(
-        #     nn.Conv2d(2048, 1024, kernel_size=1, stride=1, padding=0, bias=False),
-        #     # nn.BatchNorm2d(1024),
-        #     # nn.ReLU()
-        # )
+        self.au_to_middle_fusion = nn.Linear(dim, 512) 
+        self.au_to_top_fusion = nn.Linear(512, 256) 
+
 
     def forward(self, au, img):
         x = self.to_patch_embedding(img)
@@ -450,15 +284,14 @@ class HTNet_AU(HTNet):
         num_hierarchies = len(self.layers)
 
         B, T, N_au = au.shape # [B, T, 24]
-        # au_active = (au > 0).float() # [B, T, 24]
-        # au_active_embedding = self.state_project(au_active)  # [B, T, d_model]
-
+        
         au_indices = torch.arange(N_au, device=au.device).unsqueeze(0).unsqueeze(0)  # [1, 1, 24]
         au_indices = au_indices.expand(B, T, -1)  # [B, T, 24]
         au_index_embeds = self.au_index_embedding(au_indices)  # [B, T, 24, d_model]
 
         au_embedding = (au.unsqueeze(-1) * au_index_embeds) # [B, T, 24, d_model]
         au_embedding = self.au_project(au_embedding)  # [B, T, 24, d_model]
+
 
         # temporal transformer
         pos = self.pos_embedding[:T].unsqueeze(0).unsqueeze(0) # [1, 1, T, d_model]
@@ -471,7 +304,6 @@ class HTNet_AU(HTNet):
 
         # spatial transformer
         au_embedding = self.spatial_transformer(au_embedding.transpose(0, 1)).transpose(0, 1)  # [B, 24, d_model]
-        # au_embedding = au_embedding.mean(dim=1)  # [B, d_model]
         au_embedding = self.au_to_middle_fusion(au_embedding)  
 
         left_top_feature = au_embedding[:, [0,2,4,6], :].mean(dim=1)
@@ -483,44 +315,15 @@ class HTNet_AU(HTNet):
         four_part_feature = torch.stack([left_top_feature, right_top_feature, left_bottom_feature, right_bottom_feature], dim=-1).view(B, -1, 2, 2)
 
 
-
-        # x = x + au_embedding.unsqueeze(-1).unsqueeze(-1)
-
-
-
-
-
-
-    
-        
-
-        # au = self.in_project(au)
-        # # au = au + au_embedding
-        # au = au + au_active_embedding
-        # pos = self.pos_embedding[:T].unsqueeze(0)
-        # au = au + pos # [B, T, d_model]
-        
-        # au = self.temporal_transformer(au.transpose(0, 1)).transpose(0, 1)
-        # au = self.multi_scale_pooling(au.transpose(1, 2)).transpose(1, 2)
-        # au = self.attention_pooling(au_active_embedding)
-
-        # # return self.mlp(au)
-        # au = self.au_to_optical_fusion(au)
-
-        # x = x + au.unsqueeze(-1).unsqueeze(-1)
-
         for level, (transformer, aggregate) in zip(reversed(range(num_hierarchies)), self.layers):
             block_size = 2 ** level
             if level == 1:
                 x = x + four_part_feature
-            elif level == 0:
+            elif level == 2:
                 x = x + global_feature
             x = rearrange(x, 'b c (b1 h) (b2 w) -> (b b1 b2) c h w', b1 = block_size, b2 = block_size)
             x = transformer(x)
             x = rearrange(x, '(b b1 b2) c h w -> b c (b1 h) (b2 w)', b1 = block_size, b2 = block_size)
             x = aggregate(x)    # [B, C, H, W]
-
-        # x = x + au.unsqueeze(-1).unsqueeze(-1)
-
 
         return self.mlp_head(x)
