@@ -10,49 +10,29 @@ import cv2
 from facenet_pytorch import MTCNN
 
 def whole_face_block_coordinates(base_data_src = './datasets/combined_datasets_whole'):
-    # df = pd.read_csv('combined_3_class2_for_optical_flow.csv')
-    # m, n = df.shape
     base_data_src = base_data_src
     emotion_imgs = os.listdir(base_data_src)
-    total_emotion = len(emotion_imgs)
-    image_size_u_v = 28
-    # get the block center coordinates
     face_block_coordinates = {}
 
-    # for i in range(0, m):
+    mean_landmarks = []
     for image_name in emotion_imgs:
-        # image_name = str(df['sub'][i]) + '_' + str(
-        #     df['filename_o'][i]) + ' .png'
-        # print(image_name)
-        # img_path_apex = base_data_src + '/' + df['imagename'][i]
         img_path_apex = base_data_src + '/' + image_name
         image_name = image_name.split('.jpg')[0].strip()
         train_face_image_apex = cv2.imread(img_path_apex) # (444, 533, 3)
         face_apex = cv2.resize(train_face_image_apex, (28,28), interpolation=cv2.INTER_AREA)
         # get face and bounding box
-        mtcnn = MTCNN(margin=0, image_size=image_size_u_v, select_largest=True, post_process=False, device='cuda:0')
-        batch_boxes, _, batch_landmarks = mtcnn.detect(face_apex, landmarks=True)
-        # print(img_path_apex,batch_landmarks)
-        # if not detecting face
+        # mtcnn = MTCNN(margin=0, image_size=image_size_u_v, select_largest=True, post_process=False, device='cuda:0')
+        # batch_boxes, _, batch_landmarks = mtcnn.detect(face_apex, landmarks=True)
         batch_landmarks = None
         if batch_landmarks is None:
-            # print(f"landmarks is None for {img_path_apex}")
             batch_landmarks = np.array([[[9.528073, 11.062551]
                                             , [21.396168, 10.919773]
                                             , [15.380184, 17.380562]
                                             , [10.255435, 22.121233]
                                             , [20.583706, 22.25584]]])
-            # batch_landmarks = np.array([[[7, 7]
-            #                                 , [21, 7]
-            #                                 , [14, 14]
-            #                                 , [7, 21]
-            #                                 , [21, 21]]])
-            # print(img_path_apex)
         else:
             print(f"landmarks is not None for {img_path_apex}")
-            # import ipdb; ipdb.set_trace()
         row_n, col_n = np.shape(batch_landmarks[0])
-        # print(batch_landmarks[0])
         for i in range(0, row_n):
             for j in range(0, col_n):
                 if batch_landmarks[0][i][j] < 7:
@@ -60,10 +40,7 @@ def whole_face_block_coordinates(base_data_src = './datasets/combined_datasets_w
                 if batch_landmarks[0][i][j] > 21:
                     batch_landmarks[0][i][j] = 21
         batch_landmarks = batch_landmarks.astype(int)
-        # print(batch_landmarks[0])
-        # get the block center coordinates
         face_block_coordinates[image_name] = batch_landmarks[0]
-    # print(len(face_block_coordinates))
     return face_block_coordinates
 
 def crop_optical_flow_block(data_type="casme3"):
@@ -74,8 +51,6 @@ def crop_optical_flow_block(data_type="casme3"):
         base_data_src, optical_flow_path = 'datasets/casme3_crop_datasets_whole', 'datasets/casme3_crop_tvl1_whole_norm_u_v_os'
     
     face_block_coordinates_dict = whole_face_block_coordinates(base_data_src=base_data_src)
-    # print(len(face_block_coordinates_dict))
-    # Get train dataset
     whole_optical_flow_path = optical_flow_path
     whole_optical_flow_imgs = os.listdir(whole_optical_flow_path)
     four_parts_optical_flow_imgs = {}
@@ -102,10 +77,7 @@ def crop_optical_flow_block(data_type="casme3"):
         four_parts_optical_flow_imgs[n_img].append(nose)
         four_parts_optical_flow_imgs[n_img].append(r_eye)
         four_parts_optical_flow_imgs[n_img].append(r_lips)
-    # import ipdb; ipdb.set_trace()
-        # print(np.shape(l_eye))
-    # print((four_parts_optical_flow_imgs['spNO.189_f_150.png'][0]))->(14,14,3)
-    print(len(four_parts_optical_flow_imgs))
+
     return four_parts_optical_flow_imgs
 
 
@@ -114,7 +86,8 @@ def add_noise(au_sequence, noise_level=0.05):
     Add random noise to AU sequence.
     """
     noise = np.random.uniform(-noise_level, noise_level, size=au_sequence.shape)
-    au_sequence_noisy = au_sequence + noise
+    au_active = au_sequence > 0.0
+    au_sequence_noisy = au_sequence + noise * au_active
     # Clip the values to remain in the 0-1 range
     au_sequence_noisy = np.clip(au_sequence_noisy, 0.0, 1.0)
     return au_sequence_noisy
@@ -134,7 +107,8 @@ def shift_au(au_sequence, shift_range=(-0.05, 0.05)):
     Shift the AU sequence by a random amount.
     """
     shift = np.random.uniform(shift_range[0], shift_range[1])
-    au_sequence_shifted = au_sequence + shift
+    au_active = au_sequence > 0.0
+    au_sequence_shifted = au_sequence + shift * au_active
     # Clip the values to remain in the 0-1 range
     au_sequence_shifted = np.clip(au_sequence_shifted, 0.0, 1.0)
     return au_sequence_shifted
@@ -147,12 +121,13 @@ def dropout_au(au_sequence, dropout_rate=0.1):
     au_sequence_dropped = au_sequence * mask
     return au_sequence_dropped
 
-def interpolate_au(au_sequence, interpolation_factor=0.1):
+def interpolate_au(au_sequence, interpolation_factor=0.05):
     """
     Interpolate the AU sequence by adding a small random variation.
     """
     interpolation = np.random.uniform(-interpolation_factor, interpolation_factor, size=au_sequence.shape)
-    au_sequence_interpolated = au_sequence + interpolation
+    au_active = au_sequence > 0.0
+    au_sequence_interpolated = au_sequence + interpolation * au_active
     au_sequence_interpolated = np.clip(au_sequence_interpolated, 0.0, 1.0)
     return au_sequence_interpolated
 
@@ -164,14 +139,11 @@ class CASMEDataset(Dataset):
                  json_path='datasets/CASME3/ME_inference_au.json', 
                  xlsx_path='datasets/CASME3/annotation/cas(me)3_part_A_ME_label_JpgIndex_v2_refined.xlsx', 
                  data_path='datasets/CASME3/Part_A_ME_clip_scrfd_cropped',
-                 optical_flow_path='datasets/three_norm_u_v_os',
                  transform_au=False,
                  num_classes=7,
                  n_frames=32, 
                  pad_value=0.0,
-                 data_type='casme3',
-                 first_transform=None,
-                 img_transform=None):
+                 data_type='casme3'):
         """
         CASME3 Dataset for micro-expression classification.
 
@@ -181,7 +153,6 @@ class CASMEDataset(Dataset):
             json_path (str): Path to the JSON file containing AU values.
             xlsx_path (str): Path to the Excel file containing annotations.
             n_frames (int): Number of frames to return for each sample.
-            pad_value (float): Value to use for padding sequences shorter than n_frames.
         """
         self.mode = mode
         self.test_subject = test_subject
@@ -195,10 +166,6 @@ class CASMEDataset(Dataset):
         self.simple_emotion_dict_casme2 = {'happiness':1, 'disgust':0, 'sadness':0, 'fear':0, 'repression':0, 'surprise':2, 'others':3}
         self.num_classes = num_classes
         self.data_type = data_type
-        self.use_optical_flow =  True
-        self.use_img = False
-        self.img_transform = img_transform
-        self.first_transform = first_transform
         # Load AU data
         with open(json_path, 'r') as f:
             self.au_data = json.load(f)
@@ -333,7 +300,7 @@ class CASMEDataset(Dataset):
                 idx += 1
         if apex_idx == -1:
             apex_idx = len(au_sequence) // 2
-        # 以apex为中心，取前后各16帧
+
         # if len(au_sequence) > self.n_frames:
         if apex_idx < self.n_frames // 2:  # If apex is too close to the beginning
             au_sequence = [au_sequence[0]] * (self.n_frames // 2 - apex_idx) + au_sequence
@@ -364,49 +331,22 @@ class CASMEDataset(Dataset):
 
         au_sequence = torch.tensor(au_sequence, dtype=torch.float32)
 
-        if self.use_optical_flow:        
-            all_five_parts_optical_flow = self.all_five_parts_optical_flow
-            if self.data_type == 'casme3':
-                n_img = f"{subject}_{filename}_{apex}.png"
-            elif self.data_type == 'casme2':
-                n_img = "sub"+str(subject).zfill(2)+f"_{filename} .png"
-            # print(all_five_parts_optical_flow.keys())
-            assert n_img in all_five_parts_optical_flow.keys(), f"Frame {n_img} not found in optical flow data."
-            l_eye_lips = cv2.hconcat([all_five_parts_optical_flow[n_img][0], all_five_parts_optical_flow[n_img][1]]) # [14, 28, 3]
-            r_eye_lips  =  cv2.hconcat([all_five_parts_optical_flow[n_img][3], all_five_parts_optical_flow[n_img][4]]) # [14, 28, 3]
-            lr_eye_lips = cv2.vconcat([l_eye_lips, r_eye_lips]) # [28, 28, 3]
+   
+        all_five_parts_optical_flow = self.all_five_parts_optical_flow
+        if self.data_type == 'casme3':
+            n_img = f"{subject}_{filename}_{apex}.png"
+        elif self.data_type == 'casme2':
+            n_img = "sub"+str(subject).zfill(2)+f"_{filename} .png"
+        # print(all_five_parts_optical_flow.keys())
+        assert n_img in all_five_parts_optical_flow.keys(), f"Frame {n_img} not found in optical flow data."
+        l_eye_lips = cv2.hconcat([all_five_parts_optical_flow[n_img][0], all_five_parts_optical_flow[n_img][1]]) # [14, 28, 3]
+        r_eye_lips  =  cv2.hconcat([all_five_parts_optical_flow[n_img][3], all_five_parts_optical_flow[n_img][4]]) # [14, 28, 3]
+        lr_eye_lips = cv2.vconcat([l_eye_lips, r_eye_lips]) # [28, 28, 3]
 
-            lr_eye_lips = torch.tensor(lr_eye_lips, dtype=torch.float32) 
-            lr_eye_lips = lr_eye_lips.permute(2, 0, 1) 
-            return au_sequence, emotion, lr_eye_lips
+        lr_eye_lips = torch.tensor(lr_eye_lips, dtype=torch.float32) 
+        lr_eye_lips = lr_eye_lips.permute(2, 0, 1) 
+        return au_sequence, emotion, lr_eye_lips
         
-        if self.use_img:
-            if self.data_type == 'casme3':
-                apex_frame_name =  os.path.join(frame_prefix, f"{apex}.jpg")
-                onset_frame_name = os.path.join(frame_prefix, f"{onset}.jpg")
-            elif self.data_type == 'casme2':
-                apex_frame_name =  os.path.join('sub'+str(subject).zfill(2), filename, f"img{apex}.jpg")
-                onset_frame_name = os.path.join('sub'+str(subject).zfill(2), filename, f"img{onset}.jpg")
-            apex = cv2.cvtColor(cv2.imread(os.path.join(self.data_path, apex_frame_name)), cv2.COLOR_BGR2RGB)
-            onset = cv2.cvtColor(cv2.imread(os.path.join(self.data_path, onset_frame_name)), cv2.COLOR_BGR2RGB)
-            apex = cv2.resize(apex, (224, 224))
-            onset = cv2.resize(onset, (224, 224))
-            # cv2.imwrite('diff.jpg', np.abs(apex-onset))
-            
-            if self.first_transform is not None:
-                
-                apex = self.first_transform(apex)
-                onset = self.first_transform(onset)
-                all = torch.cat((onset, apex), 0)
-                if self.img_transform is not None:
-                    all = self.img_transform(all)
-                onset = all[:3, :, :]
-                apex  = all[3:, :, :]
-
-            return au_sequence, emotion, onset, apex
-
-        return au_sequence, emotion
-
     def augment_au(self, au_sequence):
         """
         Apply data augmentation to the AU sequence.
@@ -423,14 +363,6 @@ class CASMEDataset(Dataset):
             au_sequence = dropout_au(au_sequence)
         elif augmentation_type == 'interpolate':
             au_sequence = interpolate_au(au_sequence)
-
-
-        # # Apply all augmentations
-        # au_sequence = add_noise(au_sequence)
-        # au_sequence = scale_au(au_sequence)
-        # au_sequence = shift_au(au_sequence)
-        # au_sequence = dropout_au(au_sequence)
-        # au_sequence = interpolate_au(au_sequence)
         return au_sequence
 
 
