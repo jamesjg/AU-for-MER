@@ -76,6 +76,7 @@ def get_whole_u_v_os(df):
         img_path_apex = os.path.join(image_folder, str(df['Apex'][i])+ '.jpg')
         img_path_onset = os.path.join(image_folder, str(df['Onset'][i])+ '.jpg')
         frames = os.listdir(image_folder)
+        frames = sorted(frames, key=lambda x: int(x.split('.')[0]))
         num = len(frames)
         assert len(frames) > 0, f"Folder {image_folder} is empty"
 
