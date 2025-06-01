@@ -138,7 +138,6 @@ class CASMEDataset(Dataset):
                  test_subject='spNO.1', 
                  json_path='datasets/CASME3/ME_inference_au.json', 
                  xlsx_path='datasets/CASME3/annotation/cas(me)3_part_A_ME_label_JpgIndex_v2_refined.xlsx', 
-                 data_path='datasets/CASME3/Part_A_ME_clip_scrfd_cropped',
                  transform_au=False,
                  num_classes=7,
                  n_frames=32, 
@@ -158,7 +157,6 @@ class CASMEDataset(Dataset):
         self.test_subject = test_subject
         self.n_frames = n_frames
         self.pad_value = pad_value
-        self.data_path = data_path
         self.transform_au = transform_au
         self.emotion_dict =  {'others': 0, 'happy': 1, 'disgust': 2, 'sad': 3, 'fear': 4, 'anger': 5, 'surprise': 6}
         self.emotion_dict_casme2 = {'others': 0, 'happiness': 1, 'disgust': 2, 'sadness': 3, 'fear': 4, 'repression': 5, 'surprise': 6}
@@ -290,8 +288,6 @@ class CASMEDataset(Dataset):
                 frame_name =  os.path.join(frame_prefix, f"{frame_num}.jpg")
             elif self.data_type == 'casme2':
                 frame_name =  os.path.join('sub'+str(subject).zfill(2), filename, f"img{frame_num}.jpg")
-            # print(os.path.join(self.data_path, frame_name))
-            # if os.path.exists(os.path.join(self.data_path, frame_name)):
             if frame_name in self.au_data.keys():
                 assert frame_name in self.au_data.keys(), f"Frame {frame_name} not found in AU data."
                 au_sequence.append(self.au_data[frame_name])

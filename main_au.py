@@ -22,13 +22,6 @@ from torchvision import transforms
 
 
 
-
-def reset_weights(m):  # Reset the weights for network to avoid weight leakage
-    for layer in m.children():
-        if hasattr(layer, 'reset_parameters'):
-            #             print(f'Reset trainable parameters of layer = {layer}')
-            layer.reset_parameters()
-
 def confusionMatrix(gt, pred):
     TN, FP, FN, TP = confusion_matrix(gt, pred).ravel()
     f1_score = (2 * TP) / (2 * TP + FP + FN)
@@ -61,22 +54,6 @@ def recognition_evaluation(final_gt, final_pred, num_classes=7):
         return UF1, UAR
     except:
         return '', ''
-
-def collate_fn(batch, pad_value=0.0):
-    au_sequences, emotion, img = zip(*batch)
-    max_length = max(seq.shape[0] for seq in au_sequences)
-    padded_sequences = []
-    for seq in au_sequences:
-        pad_len = max_length - seq.shape[0]
-        if pad_len > 0:
-            padding = torch.full((pad_len, seq.shape[1]), pad_value, dtype=seq.dtype)
-            seq = torch.cat((seq, padding), dim=0)
-        padded_sequences.append(seq)
-    padded_sequences = torch.stack(padded_sequences)
-    emotion = torch.tensor(emotion, dtype=torch.long)
-    img = torch.stack(img)
-
-    return padded_sequences, emotion, img
 
 
 
@@ -120,14 +97,12 @@ def main(args):
     for subject in tqdm(subjects):
         train_dataset = CASMEDataset(mode='train', test_subject=subject, num_classes=args.num_classes, 
                                      json_path=args.json_path,
-                                     data_path=args.data_path,
                                      xlsx_path=args.xlsx_path,
                                      data_type=args.data_type,
                                      transform_au=args.transform_au,
                                      n_frames=args.n_frames)
         test_dataset = CASMEDataset(mode='test', test_subject=subject, num_classes=args.num_classes, 
                                     json_path=args.json_path,
-                                    data_path=args.data_path,
                                     xlsx_path=args.xlsx_path,
                                     data_type=args.data_type,
                                     n_frames=args.n_frames)
@@ -252,7 +227,6 @@ if __name__ == '__main__':
     parser.add_argument('--xlsx_path', type=str, default='datasets/CASME3/annotation/cas(me)3_part_A_ME_label_JpgIndex_v2_final.xlsx')
     parser.add_argument('--data_type', type=str, default='casme3')
     parser.add_argument('--optical_flow_path', type=str, default='datasets/casme3_crop_tvl1_whole_norm_u_v_os')
-    parser.add_argument('--data_path', type=str, default='datasets/CASME3/Part_A_ME_clip_scrfd_cropped')
     parser.add_argument('--weight_decay', type=float, default=1e-4)
     parser.add_argument('--batch_size', type=int, default=256)
     parser.add_argument('--lr', type=float, default=1e-4)
